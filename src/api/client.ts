@@ -6,8 +6,10 @@ import * as SecureStore from "expo-secure-store";
 import { APIResponse, APIError } from "../types/api";
 
 // API configuration
+// When testing on physical device via Expo Go, use your computer's IP address
+// localhost only works in simulators/emulators
 const API_BASE_URL = __DEV__
-  ? "http://localhost:8000"
+  ? "http://192.168.55.70:7001"
   : "https://your-production-url.railway.app";
 
 const TOKEN_KEY = "auth_token";
