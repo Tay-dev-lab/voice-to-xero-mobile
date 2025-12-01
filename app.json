@@ -1,19 +1,24 @@
 {
   "expo": {
-    "name": "voice-to-xero-mobile",
+    "name": "Voice to Xero",
     "slug": "voice-to-xero-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "voicetoxero",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.voicetoxero.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Voice to Xero needs microphone access to record voice commands for creating contacts and invoices."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,10 +26,24 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.voicetoxero.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Voice to Xero needs microphone access to record voice commands for creating contacts and invoices."
+        }
+      ]
+    ]
   }
 }
