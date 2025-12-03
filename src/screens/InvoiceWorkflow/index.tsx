@@ -3,7 +3,7 @@
  */
 
 import React, { useEffect, useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Linking, Modal, FlatList } from "react-native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../navigation/AppNavigator";
 import { useWorkflow } from "../../hooks/useWorkflow";
@@ -15,12 +15,16 @@ import {
   goToInvoiceStep,
   getInvoiceSummary,
   submitInvoice,
+  getXeroContacts,
+  updateInvoiceField,
 } from "../../api/invoice";
 import {
   InvoiceWorkflowData,
   InvoiceSteps,
   InvoiceSummaryData,
   LineItem,
+  XeroContact,
+  InvoiceSubmitData,
 } from "../../types/invoice";
 import { colors, spacing, typography } from "../../constants/theme";
 import { Button, Card, LoadingSpinner } from "../../components/common";
@@ -68,6 +72,10 @@ export default function InvoiceWorkflowScreen({
   const [submitting, setSubmitting] = useState(false);
   const [summary, setSummary] = useState<InvoiceSummaryData | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [contacts, setContacts] = useState<XeroContact[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [selectedContactId, setSelectedContactId] = useState<string>("");
+  const [showContactModal, setShowContactModal] = useState(false);
 
   // Initialize workflow on mount
   useEffect(() => {
@@ -108,6 +116,80 @@ export default function InvoiceWorkflowScreen({
     }
   }, [workflow.currentStep, workflow.session, loadSummary]);
 
+  // Fetch contacts from Xero when on contact_name step
+  useEffect(() => {
+    const fetchContacts = async () => {
+      if (workflow.currentStep !== InvoiceSteps.CONTACT_NAME) return;
+      if (contacts.length > 0) return; // Already loaded
+
+      setLoadingContacts(true);
+      try {
+        const data = await getXeroContacts();
+        setContacts(data.contacts || []);
+      } catch (error) {
+        console.log("Failed to fetch contacts:", error);
+        // Silent fail - voice input still works
+      } finally {
+        setLoadingContacts(false);
+      }
+    };
+
+    fetchContacts();
+  }, [workflow.currentStep, contacts.length]);
+
+  // Find matching contact by name (for voice input)
+  const findMatchingContact = useCallback(
+    (name: string): XeroContact | null => {
+      if (!name || contacts.length === 0) return null;
+      const normalized = name.toLowerCase().trim();
+      return contacts.find(
+        (c) =>
+          c.name.toLowerCase().includes(normalized) ||
+          normalized.includes(c.name.toLowerCase())
+      ) || null;
+    },
+    [contacts]
+  );
+
+  // Handle contact selection from dropdown
+  const handleContactSelect = useCallback(
+    async (contactId: string) => {
+      if (!workflow.session || !contactId) return;
+
+      const contact = contacts.find((c) => c.contact_id === contactId);
+      if (!contact) return;
+
+      setSelectedContactId(contactId);
+      workflow.setLoading(true);
+
+      try {
+        // Save contact data to backend session
+        await updateInvoiceField(workflow.session.sessionId, "contact_name", contact.name);
+        await updateInvoiceField(workflow.session.sessionId, "contact_id", contact.contact_id);
+
+        // Show confirmation in UI
+        workflow.processStepResult({
+          step: InvoiceSteps.CONTACT_NAME,
+          transcript: contact.name,
+          parsed_data: {
+            contact_name: contact.name,
+            contact_id: contact.contact_id,
+          },
+          requires_confirmation: true,
+          session_id: workflow.session.sessionId,
+          completed_steps: workflow.completedSteps,
+        });
+      } catch (error) {
+        workflow.setError(
+          error instanceof Error ? error.message : "Failed to select contact"
+        );
+      } finally {
+        workflow.setLoading(false);
+      }
+    },
+    [workflow, contacts]
+  );
+
   // Handle voice recording complete
   const handleRecordingComplete = useCallback(
     async (audioUri: string) => {
@@ -120,7 +202,42 @@ export default function InvoiceWorkflowScreen({
           workflow.currentStep,
           workflow.session.sessionId
         );
-        workflow.processStepResult(result);
+
+        // Special handling for contact_name step - match against existing contacts
+        if (workflow.currentStep === InvoiceSteps.CONTACT_NAME && result.parsed_data) {
+          const contactName = result.parsed_data.contact_name as string;
+          if (contactName && contacts.length > 0) {
+            const match = findMatchingContact(contactName);
+            if (match) {
+              // Found a matching contact - save to backend and update UI
+              await updateInvoiceField(workflow.session.sessionId, "contact_name", match.name);
+              await updateInvoiceField(workflow.session.sessionId, "contact_id", match.contact_id);
+
+              workflow.processStepResult({
+                ...result,
+                parsed_data: {
+                  ...result.parsed_data,
+                  contact_id: match.contact_id,
+                  contact_name: match.name,
+                },
+              });
+              setSelectedContactId(match.contact_id);
+            } else {
+              // No match found - show error
+              workflow.setLoading(false);
+              Alert.alert(
+                "Contact Not Found",
+                `No contact named "${contactName}" exists in Xero. Please add them using the Contact workflow first, or select from the dropdown.`,
+                [{ text: "OK" }]
+              );
+              return;
+            }
+          } else {
+            workflow.processStepResult(result);
+          }
+        } else {
+          workflow.processStepResult(result);
+        }
         // Reload summary after recording
         loadSummary();
       } catch (error) {
@@ -129,7 +246,7 @@ export default function InvoiceWorkflowScreen({
         );
       }
     },
-    [workflow, loadSummary]
+    [workflow, loadSummary, contacts, findMatchingContact]
   );
 
   // Handle continue to next step
@@ -154,21 +271,28 @@ export default function InvoiceWorkflowScreen({
 
       workflow.setLoading(true);
       try {
-        await confirmLineItem(workflow.session.sessionId, addAnother);
-        // Reload summary and continue
+        const result = await confirmLineItem(workflow.session.sessionId, addAnother);
+        // Reload summary
         await loadSummary();
+
         if (!addAnother) {
-          const result = await confirmInvoiceStep(workflow.session.sessionId);
-          workflow.confirmStepResult(result);
+          // Use the result from confirmLineItem to update workflow state
+          // This takes us to the review step
+          workflow.confirmStepResult({
+            confirmed_step: "line_item",
+            current_step: result.current_step,
+            step_prompt: result.step_prompt || "Review your invoice below.",
+            completed_steps: result.completed_steps,
+          });
         } else {
-          // Clear transcript to show voice recorder again
+          // Clear transcript to show voice recorder again for next item
           workflow.processStepResult({
             step: workflow.currentStep,
             transcript: "",
             parsed_data: {},
             requires_confirmation: false,
             session_id: workflow.session.sessionId,
-            completed_steps: workflow.completedSteps,
+            completed_steps: result.completed_steps,
           });
         }
       } catch (error) {
@@ -208,16 +332,40 @@ export default function InvoiceWorkflowScreen({
     setSubmitting(true);
     try {
       const result = await submitInvoice(workflow.session.sessionId);
-      Alert.alert(
-        "Success!",
-        `Invoice ${result.invoice_number || result.invoice_id} has been created in Xero.`,
-        [
-          {
-            text: "OK",
-            onPress: () => navigation.goBack(),
+
+      // Build success message
+      let message = `Invoice ${result.invoice_number || result.invoice_id} has been created.`;
+
+      if (result.email_sent) {
+        message += `\n\nEmail sent to ${result.contact_name}.`;
+      } else if (result.email_error) {
+        message += `\n\nEmail not sent: ${result.email_error}`;
+      }
+
+      // Build buttons
+      const buttons: Array<{
+        text: string;
+        onPress?: () => void;
+        style?: "cancel" | "default" | "destructive";
+      }> = [];
+
+      // Add "View Invoice" button if URL is available
+      if (result.online_invoice_url) {
+        buttons.push({
+          text: "View Invoice",
+          onPress: () => {
+            Linking.openURL(result.online_invoice_url!);
           },
-        ]
-      );
+        });
+      }
+
+      buttons.push({
+        text: "Done",
+        onPress: () => navigation.goBack(),
+        style: "default",
+      });
+
+      Alert.alert("Success!", message, buttons);
     } catch (error) {
       Alert.alert(
         "Error",
@@ -256,6 +404,7 @@ export default function InvoiceWorkflowScreen({
   const isReviewStep = workflow.currentStep === InvoiceSteps.REVIEW;
   const isWelcomeStep = workflow.currentStep === InvoiceSteps.WELCOME;
   const isLineItemStep = workflow.currentStep === InvoiceSteps.LINE_ITEM;
+  const isContactNameStep = workflow.currentStep === InvoiceSteps.CONTACT_NAME;
 
   return (
     <View style={styles.container}>
@@ -289,8 +438,89 @@ export default function InvoiceWorkflowScreen({
           />
         )}
 
-        {/* Voice Input Step */}
-        {isVoiceStep && !workflow.transcript && (
+        {/* Contact Selection - Dropdown + Voice */}
+        {isContactNameStep && !workflow.transcript && (
+          <View style={styles.contactSelectionSection}>
+            {loadingContacts ? (
+              <Text style={styles.loadingText}>Loading contacts...</Text>
+            ) : contacts.length > 0 ? (
+              <>
+                {/* Dropdown Button */}
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => setShowContactModal(true)}
+                >
+                  <Text style={selectedContactId ? styles.dropdownTextSelected : styles.dropdownText}>
+                    {selectedContactId
+                      ? contacts.find((c) => c.contact_id === selectedContactId)?.name
+                      : "Select a contact..."}
+                  </Text>
+                  <Text style={styles.dropdownArrow}>▼</Text>
+                </TouchableOpacity>
+
+                {/* OR Divider */}
+                <Text style={styles.orDivider}>— OR use voice input —</Text>
+
+                {/* Voice Recorder - Always visible */}
+                <VoiceRecorder
+                  onRecordingComplete={handleRecordingComplete}
+                  disabled={workflow.isLoading}
+                />
+
+                {/* Contact Selection Modal */}
+                <Modal
+                  visible={showContactModal}
+                  animationType="slide"
+                  transparent
+                  onRequestClose={() => setShowContactModal(false)}
+                >
+                  <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                      <Text style={styles.modalTitle}>Select Contact</Text>
+                      <FlatList
+                        data={contacts}
+                        keyExtractor={(item) => item.contact_id}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={styles.contactItem}
+                            onPress={() => {
+                              handleContactSelect(item.contact_id);
+                              setShowContactModal(false);
+                            }}
+                          >
+                            <Text style={styles.contactName}>{item.name}</Text>
+                            {item.email && (
+                              <Text style={styles.contactEmail}>{item.email}</Text>
+                            )}
+                          </TouchableOpacity>
+                        )}
+                        style={styles.contactList}
+                      />
+                      <Button
+                        title="Cancel"
+                        onPress={() => setShowContactModal(false)}
+                        variant="outline"
+                      />
+                    </View>
+                  </View>
+                </Modal>
+              </>
+            ) : (
+              <>
+                <Text style={styles.noContactsText}>
+                  No contacts found. Use voice input to search or add contacts in the Contact workflow.
+                </Text>
+                <VoiceRecorder
+                  onRecordingComplete={handleRecordingComplete}
+                  disabled={workflow.isLoading}
+                />
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Voice Input Step (for other steps) */}
+        {isVoiceStep && !isContactNameStep && !workflow.transcript && (
           <VoiceRecorder
             onRecordingComplete={handleRecordingComplete}
             disabled={workflow.isLoading}
@@ -604,6 +834,88 @@ const styles = StyleSheet.create({
   },
   errorCardText: {
     color: colors.error,
+    fontSize: typography.fontSize.sm,
+  },
+  contactSelectionSection: {
+    marginBottom: spacing.lg,
+  },
+  dropdownButton: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    borderRadius: 8,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  dropdownText: {
+    fontSize: typography.fontSize.base,
+    color: colors.textSecondary,
+  },
+  dropdownTextSelected: {
+    fontSize: typography.fontSize.base,
+    color: colors.text,
+    fontWeight: typography.fontWeight.medium,
+  },
+  dropdownArrow: {
+    fontSize: typography.fontSize.sm,
+    color: colors.gray500,
+  },
+  orDivider: {
+    textAlign: "center",
+    color: colors.textSecondary,
+    fontSize: typography.fontSize.sm,
+    marginVertical: spacing.lg,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: spacing.lg,
+    maxHeight: "70%",
+  },
+  modalTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.gray800,
+    marginBottom: spacing.base,
+    textAlign: "center",
+  },
+  contactList: {
+    marginBottom: spacing.base,
+  },
+  contactItem: {
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray100,
+  },
+  contactName: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.text,
+  },
+  contactEmail: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  loadingText: {
+    textAlign: "center",
+    color: colors.textSecondary,
+    marginVertical: spacing.lg,
+  },
+  noContactsText: {
+    textAlign: "center",
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
     fontSize: typography.fontSize.sm,
   },
 });

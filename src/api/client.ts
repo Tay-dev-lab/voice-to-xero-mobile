@@ -6,10 +6,13 @@ import * as SecureStore from "expo-secure-store";
 import { APIResponse, APIError } from "../types/api";
 
 // API configuration
-// When testing on physical device via Expo Go, use your computer's IP address
-// localhost only works in simulators/emulators
+// For development with Xero OAuth, use ngrok URL (HTTPS required for non-localhost)
+// Run: ngrok http 7001
+// Then update this URL with your ngrok forwarding address
+const NGROK_URL = ""; // Set your ngrok URL here, e.g., "https://abc123.ngrok-free.app"
+
 const API_BASE_URL = __DEV__
-  ? "http://192.168.55.70:7001"
+  ? NGROK_URL || "https://5ffb375d570d.ngrok-free.app"
   : "https://your-production-url.railway.app";
 
 const TOKEN_KEY = "auth_token";

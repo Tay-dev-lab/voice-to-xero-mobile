@@ -10,6 +10,19 @@ import {
   StepConfirmData,
 } from "../types/api";
 
+/**
+ * Convert snake_case keys to camelCase.
+ * Backend returns snake_case (Python), frontend uses camelCase (TypeScript).
+ */
+function snakeToCamelCase(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    result[camelKey] = value;
+  }
+  return result;
+}
+
 interface WorkflowState<T> {
   session: WorkflowSession<T> | null;
   currentStep: string;
@@ -74,6 +87,9 @@ export function useWorkflow<T extends object>(
    * Process step result from voice input.
    */
   const processStepResult = useCallback((data: StepProcessData) => {
+    // Convert snake_case to camelCase for frontend compatibility
+    const camelCaseData = snakeToCamelCase(data.parsed_data);
+
     setState((prev) => ({
       ...prev,
       transcript: data.transcript,
@@ -87,7 +103,7 @@ export function useWorkflow<T extends object>(
             completedSteps: data.completed_steps,
             workflowData: {
               ...prev.session.workflowData,
-              ...data.parsed_data,
+              ...camelCaseData,
             } as T,
           }
         : null,

@@ -80,7 +80,8 @@ export async function logout(): Promise<void> {
 /**
  * Get the Xero OAuth authorization URL.
  * The user should be redirected to this URL in an in-app browser.
+ * Includes mobile flag so backend knows to redirect to deep link after auth.
  */
 export function getXeroAuthUrl(): string {
-  return `${API_BASE_URL}/auth/start`;
+  return `${API_BASE_URL}/auth/start?mobile=true&redirect_scheme=voice-to-xero`;
 }

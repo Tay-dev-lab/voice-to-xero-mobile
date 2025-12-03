@@ -1,0 +1,11 @@
+{
+  "LJ04ZM9D": {
+    "type": "pty",
+    "createdAt": 1764773841,
+    "expiresAt": 1764860241,
+    "cwd": "/Users/andrewtaylor/voice-to-xero-mobile/api",
+    "sessionId": "fbd1af3a-854f-4131-b4e6-88c0af165e4e",
+    "tmuxSession": "claude-code-remote",
+    "description": "completed - api"
+  }
+}

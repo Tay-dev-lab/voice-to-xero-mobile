@@ -43,7 +43,8 @@ export default function VoiceRecorder({
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
 
   const handlePressIn = async () => {
-    if (disabled || isProcessing) return;
+    // Guard: Don't start if disabled, processing, or already recording
+    if (disabled || isProcessing || isRecording) return;
 
     // Animate button scale
     Animated.spring(scaleAnim, {
@@ -61,6 +62,9 @@ export default function VoiceRecorder({
       useNativeDriver: true,
     }).start();
 
+    // Always try to stop - the hook handles the case where there's nothing to stop.
+    // This is important because state updates are async, so isRecording might not
+    // be true yet even if startRecording() has begun.
     const audioUri = await stopRecording();
     if (audioUri) {
       onRecordingComplete(audioUri);

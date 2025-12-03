@@ -13,6 +13,7 @@ import {
   InvoiceSummaryData,
   InvoiceSubmitData,
   LineItemConfirmData,
+  XeroContact,
 } from "../types/invoice";
 
 /**
@@ -45,7 +46,7 @@ export async function confirmInvoiceStep(
   const formData = new FormData();
   formData.append("session_id", sessionId);
 
-  return apiRequest<StepConfirmData>("/invoice/continue-step", {
+  return apiRequest<StepConfirmData>("/invoice/confirm-step", {
     method: "POST",
     body: formData,
   });
@@ -106,8 +107,8 @@ export async function updateInvoiceField(
 ): Promise<FieldUpdateData> {
   const formData = new FormData();
   formData.append("session_id", sessionId);
-  formData.append("field", field);
-  formData.append("value", value);
+  formData.append("field_name", field);
+  formData.append("field_value", value);
 
   return apiRequest<FieldUpdateData>("/invoice/update-field", {
     method: "POST",
@@ -124,8 +125,15 @@ export async function submitInvoice(
   const formData = new FormData();
   formData.append("session_id", sessionId);
 
-  return apiRequest<InvoiceSubmitData>("/invoice/submit", {
+  return apiRequest<InvoiceSubmitData>("/invoice/submit-to-xero", {
     method: "POST",
     body: formData,
   });
+}
+
+/**
+ * Get list of contacts from Xero for dropdown selection.
+ */
+export async function getXeroContacts(): Promise<{ contacts: XeroContact[] }> {
+  return apiRequest<{ contacts: XeroContact[] }>("/invoice/contacts");
 }

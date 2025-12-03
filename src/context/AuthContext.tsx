@@ -14,7 +14,6 @@ import * as WebBrowser from "expo-web-browser";
 import { getToken, clearToken } from "../api/client";
 import {
   getAuthStatus,
-  getMobileToken,
   refreshToken,
   validateOpenAI,
   getXeroAuthUrl,
@@ -124,10 +123,43 @@ export function AuthProvider({ children }: AuthProviderProps) {
         "voice-to-xero://oauth/callback"
       );
 
-      if (result.type === "success") {
-        // OAuth completed, get mobile token
-        await getMobileToken();
-        await checkAuthStatus();
+      if (result.type === "success" && result.url) {
+        // Parse the callback URL to extract token
+        const url = new URL(result.url);
+        const token = url.searchParams.get("token");
+        const error = url.searchParams.get("error");
+
+        if (error) {
+          setState((prev) => ({
+            ...prev,
+            isLoading: false,
+            error: `Authentication failed: ${error}`,
+          }));
+          return;
+        }
+
+        if (token) {
+          // Store the token from the callback URL
+          const { setToken } = await import("../api/client");
+          await setToken(token);
+
+          // Update state - note: openaiValid is false because OAuth creates
+          // a new session that doesn't have the OpenAI key yet
+          setState((prev) => ({
+            ...prev,
+            isLoading: false,
+            isAuthenticated: true,
+            xeroConnected: true,
+            openaiValid: false, // New session requires re-entering OpenAI key
+            error: null,
+          }));
+        } else {
+          setState((prev) => ({
+            ...prev,
+            isLoading: false,
+            error: "No token received from authentication",
+          }));
+        }
       } else if (result.type === "cancel") {
         setState((prev) => ({
           ...prev,
@@ -142,7 +174,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         error: error instanceof Error ? error.message : "Authentication failed",
       }));
     }
-  }, [checkAuthStatus]);
+  }, []);
 
   /**
    * Validate OpenAI API key.

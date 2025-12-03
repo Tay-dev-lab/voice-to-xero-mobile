@@ -41,7 +41,7 @@ export async function confirmContactStep(
   const formData = new FormData();
   formData.append("session_id", sessionId);
 
-  return apiRequest<StepConfirmData>("/contact/continue-step", {
+  return apiRequest<StepConfirmData>("/contact/confirm-step", {
     method: "POST",
     body: formData,
   });
@@ -85,8 +85,8 @@ export async function updateContactField(
 ): Promise<FieldUpdateData> {
   const formData = new FormData();
   formData.append("session_id", sessionId);
-  formData.append("field", field);
-  formData.append("value", value);
+  formData.append("field_name", field);
+  formData.append("field_value", value);
 
   return apiRequest<FieldUpdateData>("/contact/update-field", {
     method: "POST",
@@ -103,7 +103,7 @@ export async function submitContact(
   const formData = new FormData();
   formData.append("session_id", sessionId);
 
-  return apiRequest<ContactSubmitData>("/contact/submit", {
+  return apiRequest<ContactSubmitData>("/contact/submit-to-xero", {
     method: "POST",
     body: formData,
   });

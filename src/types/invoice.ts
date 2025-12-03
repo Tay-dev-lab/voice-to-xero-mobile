@@ -46,10 +46,14 @@ export interface InvoiceSummaryData {
 }
 
 export interface LineItemConfirmData {
-  line_items: LineItem[];
-  item_count: number;
-  can_add_more: boolean;
-  max_items: number;
+  // Fields returned when add_another=false (proceeding to review)
+  current_step: string;
+  completed_steps: string[];
+  workflow_data?: Record<string, unknown>;
+  step_prompt?: string;
+  // Fields returned when add_another=true (adding more items)
+  line_items?: LineItem[];
+  item_count?: number;
 }
 
 export interface InvoiceSubmitData {
@@ -59,6 +63,15 @@ export interface InvoiceSubmitData {
   contact_name: string;
   total: number;
   status: string;
+  online_invoice_url?: string;
+  email_sent?: boolean;
+  email_error?: string;
+}
+
+export interface XeroContact {
+  contact_id: string;
+  name: string;
+  email?: string;
 }
 
 // Invoice workflow step names
