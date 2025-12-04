@@ -137,3 +137,49 @@ export async function submitInvoice(
 export async function getXeroContacts(): Promise<{ contacts: XeroContact[] }> {
   return apiRequest<{ contacts: XeroContact[] }>("/invoice/contacts");
 }
+
+/**
+ * Response type for clear line item operations.
+ */
+interface ClearLineItemResponse {
+  success: boolean;
+  item_count: number;
+  line_items: Array<{
+    description: string;
+    quantity: number;
+    unit_price: number;
+    vat_rate: string;
+  }>;
+}
+
+/**
+ * Clear a specific line item by index.
+ */
+export async function clearLineItem(
+  sessionId: string,
+  itemIndex: number
+): Promise<ClearLineItemResponse> {
+  const formData = new FormData();
+  formData.append("session_id", sessionId);
+  formData.append("item_index", itemIndex.toString());
+
+  return apiRequest<ClearLineItemResponse>("/invoice/clear-line-item", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+/**
+ * Clear all line items.
+ */
+export async function clearAllLineItems(
+  sessionId: string
+): Promise<ClearLineItemResponse> {
+  const formData = new FormData();
+  formData.append("session_id", sessionId);
+
+  return apiRequest<ClearLineItemResponse>("/invoice/clear-all-line-items", {
+    method: "POST",
+    body: formData,
+  });
+}

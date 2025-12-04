@@ -42,6 +42,10 @@ interface UseWorkflowReturn<T> extends WorkflowState<T> {
   setError: (error: string | null) => void;
   updateWorkflowData: (updates: Partial<T>) => void;
   resetWorkflow: () => void;
+  goToStep: (step: string, prompt: string) => void;
+  canGoBack: (steps: string[]) => boolean;
+  canGoForward: (steps: string[]) => boolean;
+  getAdjacentSteps: (steps: string[]) => { prevStep: string | null; nextStep: string | null };
 }
 
 export function useWorkflow<T extends object>(
@@ -181,6 +185,64 @@ export function useWorkflow<T extends object>(
     });
   }, []);
 
+  /**
+   * Navigate to a specific step (for back/forward navigation).
+   */
+  const goToStep = useCallback((step: string, prompt: string) => {
+    setState((prev) => ({
+      ...prev,
+      currentStep: step,
+      stepPrompt: prompt,
+      transcript: null,
+      parsedData: null,
+      isLoading: false,
+      error: null,
+      session: prev.session
+        ? {
+            ...prev.session,
+            currentStep: step,
+          }
+        : null,
+    }));
+  }, []);
+
+  /**
+   * Check if can navigate back.
+   */
+  const canGoBack = useCallback(
+    (steps: string[]): boolean => {
+      const currentIndex = steps.indexOf(state.currentStep);
+      return currentIndex > 0;
+    },
+    [state.currentStep]
+  );
+
+  /**
+   * Check if can navigate forward (only if next step was previously completed).
+   */
+  const canGoForward = useCallback(
+    (steps: string[]): boolean => {
+      const currentIndex = steps.indexOf(state.currentStep);
+      const nextStep = steps[currentIndex + 1];
+      return currentIndex < steps.length - 1 && state.completedSteps.includes(nextStep);
+    },
+    [state.currentStep, state.completedSteps]
+  );
+
+  /**
+   * Get adjacent steps for navigation.
+   */
+  const getAdjacentSteps = useCallback(
+    (steps: string[]): { prevStep: string | null; nextStep: string | null } => {
+      const currentIndex = steps.indexOf(state.currentStep);
+      return {
+        prevStep: currentIndex > 0 ? steps[currentIndex - 1] : null,
+        nextStep: currentIndex < steps.length - 1 ? steps[currentIndex + 1] : null,
+      };
+    },
+    [state.currentStep]
+  );
+
   return {
     ...state,
     initializeWorkflow,
@@ -190,5 +252,9 @@ export function useWorkflow<T extends object>(
     setError,
     updateWorkflowData,
     resetWorkflow,
+    goToStep,
+    canGoBack,
+    canGoForward,
+    getAdjacentSteps,
   };
 }

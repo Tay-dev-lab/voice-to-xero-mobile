@@ -7,5 +7,32 @@
     "sessionId": "fbd1af3a-854f-4131-b4e6-88c0af165e4e",
     "tmuxSession": "claude-code-remote",
     "description": "completed - api"
+  },
+  "ABIW2L20": {
+    "type": "pty",
+    "createdAt": 1764775281,
+    "expiresAt": 1764861681,
+    "cwd": "/Users/andrewtaylor/voice-to-xero-mobile/api",
+    "sessionId": "40a85f06-63a6-4cbe-a500-1df5394fb002",
+    "tmuxSession": "claude-code-remote",
+    "description": "waiting - api"
+  },
+  "0JX8CSYK": {
+    "type": "pty",
+    "createdAt": 1764775283,
+    "expiresAt": 1764861683,
+    "cwd": "/Users/andrewtaylor/voice-to-xero-mobile/api",
+    "sessionId": "341178ea-352b-4071-b300-e3f2d92af197",
+    "tmuxSession": "claude-code-remote",
+    "description": "waiting - api"
+  },
+  "7PHOJAC7": {
+    "type": "pty",
+    "createdAt": 1764775288,
+    "expiresAt": 1764861688,
+    "cwd": "/Users/andrewtaylor/voice-to-xero-mobile/api",
+    "sessionId": "e98402e9-f467-431f-bec3-4e8a6e5b0b98",
+    "tmuxSession": "claude-code-remote",
+    "description": "waiting - api"
   }
 }

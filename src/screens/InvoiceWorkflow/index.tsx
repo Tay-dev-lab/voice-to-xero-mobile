@@ -3,8 +3,9 @@
  */
 
 import React, { useEffect, useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Linking, Modal, FlatList } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Linking, Modal, FlatList, TextInput } from "react-native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 import { RootStackParamList } from "../../navigation/AppNavigator";
 import { useWorkflow } from "../../hooks/useWorkflow";
 import {
@@ -17,6 +18,8 @@ import {
   submitInvoice,
   getXeroContacts,
   updateInvoiceField,
+  clearLineItem,
+  clearAllLineItems,
 } from "../../api/invoice";
 import {
   InvoiceWorkflowData,
@@ -26,9 +29,9 @@ import {
   XeroContact,
   InvoiceSubmitData,
 } from "../../types/invoice";
-import { colors, spacing, typography } from "../../constants/theme";
+import { colors, spacing, typography, borderRadius } from "../../constants/theme";
 import { Button, Card, LoadingSpinner } from "../../components/common";
-import { VoiceRecorder, StepProgress, StepResult } from "../../components/workflow";
+import { VoiceRecorder, StepProgress, StepResult, AccumulatedDataCard, NavigationButtons } from "../../components/workflow";
 
 type InvoiceWorkflowNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -76,6 +79,7 @@ export default function InvoiceWorkflowScreen({
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState<string>("");
   const [showContactModal, setShowContactModal] = useState(false);
+  const [editingField, setEditingField] = useState<{ name: string; value: string; label: string } | null>(null);
 
   // Initialize workflow on mount
   useEffect(() => {
@@ -376,6 +380,146 @@ export default function InvoiceWorkflowScreen({
     }
   }, [workflow, navigation]);
 
+  // Step names array for navigation
+  const stepNames = STEPS.map((s) => s.name) as string[];
+
+  // Handle go back navigation
+  const handleGoBack = useCallback(async () => {
+    if (!workflow.session) return;
+
+    const currentIndex = stepNames.indexOf(workflow.currentStep as string);
+    if (currentIndex <= 0) return;
+
+    const prevStep = stepNames[currentIndex - 1] as string;
+    if (!prevStep) return;
+
+    workflow.setLoading(true);
+    try {
+      const result = await goToInvoiceStep(workflow.session.sessionId, prevStep);
+      workflow.confirmStepResult(result);
+    } catch (error) {
+      workflow.setError(
+        error instanceof Error ? error.message : "Failed to navigate back"
+      );
+    }
+  }, [workflow, stepNames]);
+
+  // Handle go forward navigation
+  const handleGoForward = useCallback(async () => {
+    if (!workflow.session) return;
+
+    const currentIndex = stepNames.indexOf(workflow.currentStep as string);
+    const nextStep = stepNames[currentIndex + 1] as string;
+
+    if (!nextStep) return;
+
+    workflow.setLoading(true);
+    try {
+      const result = await goToInvoiceStep(workflow.session.sessionId, nextStep);
+      workflow.confirmStepResult(result);
+    } catch (error) {
+      workflow.setError(
+        error instanceof Error ? error.message : "Failed to navigate forward"
+      );
+    }
+  }, [workflow, stepNames]);
+
+  // Handle editing a field
+  const handleEditField = useCallback((fieldName: string, currentValue: string) => {
+    const labelMap: Record<string, string> = {
+      contact_name: "Contact Name",
+      due_date: "Due Date",
+    };
+    setEditingField({
+      name: fieldName,
+      value: currentValue,
+      label: labelMap[fieldName] || fieldName,
+    });
+  }, []);
+
+  // Save edited field
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingField || !workflow.session) return;
+
+    workflow.setLoading(true);
+    try {
+      await updateInvoiceField(
+        workflow.session.sessionId,
+        editingField.name,
+        editingField.value
+      );
+      // Reload summary to reflect changes
+      await loadSummary();
+      // Update local workflow data
+      if (editingField.name === "contact_name") {
+        workflow.updateWorkflowData({ contactName: editingField.value });
+      } else if (editingField.name === "due_date") {
+        workflow.updateWorkflowData({ dueDate: editingField.value });
+      }
+      setEditingField(null);
+    } catch (error) {
+      Alert.alert("Error", "Failed to save changes");
+    } finally {
+      workflow.setLoading(false);
+    }
+  }, [editingField, workflow, loadSummary]);
+
+  // Handle clearing a single line item
+  const handleClearItem = useCallback(async (index: number) => {
+    if (!workflow.session) return;
+
+    Alert.alert(
+      "Clear Item",
+      "Are you sure you want to remove this item?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            workflow.setLoading(true);
+            try {
+              await clearLineItem(workflow.session!.sessionId, index);
+              await loadSummary();
+            } catch (error) {
+              Alert.alert("Error", "Failed to remove item");
+            } finally {
+              workflow.setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [workflow, loadSummary]);
+
+  // Handle clearing all line items
+  const handleClearAllItems = useCallback(async () => {
+    if (!workflow.session) return;
+
+    Alert.alert(
+      "Clear All Items",
+      "Are you sure you want to remove all items?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear All",
+          style: "destructive",
+          onPress: async () => {
+            workflow.setLoading(true);
+            try {
+              await clearAllLineItems(workflow.session!.sessionId);
+              await loadSummary();
+            } catch (error) {
+              Alert.alert("Error", "Failed to clear items");
+            } finally {
+              workflow.setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [workflow, loadSummary]);
+
   // Loading state
   if (workflow.isLoading && !workflow.session) {
     return <LoadingSpinner message="Starting workflow..." />;
@@ -428,6 +572,39 @@ export default function InvoiceWorkflowScreen({
               "Continue with the workflow"}
           </Text>
         </Card>
+
+        {/* Accumulated Data Card - Show all collected data including current step */}
+        {workflow.currentStep === InvoiceSteps.CONTACT_NAME && summary?.contact_name && (
+          <AccumulatedDataCard
+            title="Saved Contact"
+            data={[
+              { label: "Contact", value: summary.contact_name, fieldName: "contact_name", editable: true },
+            ]}
+            onEditField={handleEditField}
+          />
+        )}
+
+        {workflow.currentStep === InvoiceSteps.DUE_DATE && summary && (
+          <AccumulatedDataCard
+            title="Invoice Details"
+            data={[
+              { label: "Contact", value: summary.contact_name || "", fieldName: "contact_name", editable: true },
+              { label: "Due Date", value: summary.due_date || "", fieldName: "due_date", editable: true },
+            ]}
+            onEditField={handleEditField}
+          />
+        )}
+
+        {workflow.currentStep === InvoiceSteps.LINE_ITEM && summary && (
+          <AccumulatedDataCard
+            title="Invoice Details"
+            data={[
+              { label: "Contact", value: summary.contact_name || "", fieldName: "contact_name", editable: true },
+              { label: "Due Date", value: summary.due_date || "", fieldName: "due_date", editable: true },
+            ]}
+            onEditField={handleEditField}
+          />
+        )}
 
         {/* Welcome Step - Just show continue button */}
         {isWelcomeStep && (
@@ -563,20 +740,47 @@ export default function InvoiceWorkflowScreen({
         {/* Line Items Summary (shown during line item step) */}
         {isLineItemStep && summary && summary.line_items.length > 0 && (
           <Card style={styles.lineItemsCard}>
-            <Text style={styles.lineItemsTitle}>
-              Items Added ({summary.line_items.length})
-            </Text>
+            <View style={styles.lineItemsHeader}>
+              <Text style={styles.lineItemsTitle}>
+                Items Added ({summary.line_items.length})
+              </Text>
+              <TouchableOpacity
+                onPress={handleClearAllItems}
+                style={styles.clearAllButton}
+              >
+                <Ionicons name="trash-outline" size={16} color={colors.error} />
+                <Text style={styles.clearAllText}>Clear All</Text>
+              </TouchableOpacity>
+            </View>
             {summary.line_items.map((item, index) => (
-              <View key={index} style={styles.lineItemRow}>
-                <Text style={styles.lineItemDesc} numberOfLines={1}>
-                  {item.description}
-                </Text>
-                <Text style={styles.lineItemTotal}>
-                  £{item.line_total.toFixed(2)}
-                </Text>
+              <View key={index} style={styles.lineItemRowWithClear}>
+                <View style={styles.lineItemInfo}>
+                  <Text style={styles.lineItemDesc} numberOfLines={1}>
+                    {item.description}
+                  </Text>
+                  <Text style={styles.lineItemTotal}>
+                    £{item.line_total.toFixed(2)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => handleClearItem(index)}
+                  style={styles.clearItemButton}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="close-circle" size={20} color={colors.error} />
+                </TouchableOpacity>
               </View>
             ))}
           </Card>
+        )}
+
+        {/* Continue button when on line_item step with items but no active transcript */}
+        {isLineItemStep && summary && summary.line_items.length > 0 && !workflow.transcript && (
+          <Button
+            title="Continue to Review"
+            onPress={() => handleConfirmLineItem(false)}
+            disabled={workflow.isLoading}
+          />
         )}
 
         {/* Review Step */}
@@ -659,7 +863,61 @@ export default function InvoiceWorkflowScreen({
             <Text style={styles.errorCardText}>{workflow.error}</Text>
           </Card>
         )}
+
+        {/* Navigation Buttons */}
+        {!isWelcomeStep && (
+          <NavigationButtons
+            currentStepIndex={stepNames.indexOf(workflow.currentStep as string)}
+            totalSteps={stepNames.length}
+            completedSteps={workflow.completedSteps}
+            steps={stepNames}
+            onBack={handleGoBack}
+            onForward={handleGoForward}
+            disabled={workflow.isLoading}
+          />
+        )}
       </ScrollView>
+
+      {/* Edit Field Modal */}
+      <Modal
+        visible={!!editingField}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingField(null)}
+      >
+        <View style={styles.editModalOverlay}>
+          <View style={styles.editModalContent}>
+            <Text style={styles.editModalTitle}>
+              Edit {editingField?.label}
+            </Text>
+            <TextInput
+              style={styles.editInput}
+              value={editingField?.value || ""}
+              onChangeText={(text) =>
+                setEditingField((prev) =>
+                  prev ? { ...prev, value: text } : null
+                )
+              }
+              autoFocus
+              selectTextOnFocus
+            />
+            <View style={styles.editModalButtons}>
+              <Button
+                title="Cancel"
+                onPress={() => setEditingField(null)}
+                variant="outline"
+                style={styles.editModalButton}
+              />
+              <Button
+                title="Save"
+                onPress={handleSaveEdit}
+                loading={workflow.isLoading}
+                style={styles.editModalButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -917,5 +1175,79 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.lg,
     fontSize: typography.fontSize.sm,
+  },
+  // Line items with clear buttons
+  lineItemsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.sm,
+  },
+  clearAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  clearAllText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.error,
+    marginLeft: spacing.xs,
+  },
+  lineItemRowWithClear: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray100,
+  },
+  lineItemInfo: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginRight: spacing.sm,
+  },
+  clearItemButton: {
+    padding: spacing.xs,
+  },
+  // Edit modal styles
+  editModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  editModalContent: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    width: "100%",
+    maxWidth: 400,
+  },
+  editModalTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.gray800,
+    marginBottom: spacing.base,
+    textAlign: "center",
+  },
+  editInput: {
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    fontSize: typography.fontSize.base,
+    color: colors.text,
+    marginBottom: spacing.base,
+  },
+  editModalButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+  },
+  editModalButton: {
+    flex: 1,
   },
 });

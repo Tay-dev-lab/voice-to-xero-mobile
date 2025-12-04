@@ -304,5 +304,50 @@
     "sessionId": "a57c2503-c807-419b-b3fd-dd818acb3c28",
     "tmuxSession": "claude-code-remote",
     "description": "completed - voice-to-xero-mobile"
+  },
+  "8VLDX7KS": {
+    "type": "pty",
+    "createdAt": 1764776188,
+    "expiresAt": 1764862588,
+    "cwd": "/Users/andrewtaylor/voice-to-xero-mobile",
+    "sessionId": "612bf9bf-3fda-4dde-bba6-7f9280575652",
+    "tmuxSession": "claude-code-remote",
+    "description": "completed - voice-to-xero-mobile"
+  },
+  "9DU6E49W": {
+    "type": "pty",
+    "createdAt": 1764841089,
+    "expiresAt": 1764927489,
+    "cwd": "/Users/andrewtaylor/voice-to-xero-mobile",
+    "sessionId": "2276eaec-46d7-444a-9462-adba7368e84c",
+    "tmuxSession": "claude-code-remote",
+    "description": "waiting - voice-to-xero-mobile"
+  },
+  "LI0F4YY2": {
+    "type": "pty",
+    "createdAt": 1764841330,
+    "expiresAt": 1764927730,
+    "cwd": "/Users/andrewtaylor/voice-to-xero-mobile",
+    "sessionId": "20322764-a0ac-470f-bbb6-46af37222207",
+    "tmuxSession": "claude-code-remote",
+    "description": "completed - voice-to-xero-mobile"
+  },
+  "XGSHZZJA": {
+    "type": "pty",
+    "createdAt": 1764842466,
+    "expiresAt": 1764928866,
+    "cwd": "/Users/andrewtaylor/voice-to-xero-mobile",
+    "sessionId": "d6bbac6b-cc6b-4909-8660-fe9b1863c300",
+    "tmuxSession": "claude-code-remote",
+    "description": "completed - voice-to-xero-mobile"
+  },
+  "6PFVJT6C": {
+    "type": "pty",
+    "createdAt": 1764843500,
+    "expiresAt": 1764929900,
+    "cwd": "/Users/andrewtaylor/voice-to-xero-mobile",
+    "sessionId": "25ac1113-b2af-4c2e-aa3d-76b6f73c643b",
+    "tmuxSession": "claude-code-remote",
+    "description": "completed - voice-to-xero-mobile"
   }
 }

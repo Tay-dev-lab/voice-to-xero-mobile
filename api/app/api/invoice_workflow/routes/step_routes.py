@@ -826,3 +826,117 @@ async def proceed_to_review(
             content=f'<div class="error">Error: {str(e)}</div>',
             status_code=500,
         )
+
+
+@router.post("/clear-line-item", response_model=None)
+async def clear_line_item(
+    request: Request,
+    session_id: str = Form(...),
+    item_index: int = Form(...),
+):
+    """Remove a specific line item by index."""
+    is_mobile = wants_json(request)
+
+    try:
+        # Validate session
+        validation_result = validate_session_id(session_id)
+        if not validation_result["is_valid"]:
+            if is_mobile:
+                return JSONResponse(
+                    content=json_error("SESSION_EXPIRED", "Session expired"),
+                    status_code=400,
+                )
+            return HTMLResponse(
+                content='<div class="error">Session expired</div>',
+                status_code=400,
+            )
+
+        session = get_invoice_session(session_id)
+
+        # Remove item at index if valid
+        if 0 <= item_index < len(session.invoice_data.get("line_items", [])):
+            session.invoice_data["line_items"].pop(item_index)
+            session.line_item_count = len(session.invoice_data["line_items"])
+            logger.info(f"Cleared line item {item_index}, remaining: {session.line_item_count}")
+
+        if is_mobile:
+            return JSONResponse(
+                content=json_success({
+                    "success": True,
+                    "item_count": session.line_item_count,
+                    "line_items": session.invoice_data.get("line_items", []),
+                })
+            )
+
+        return HTMLResponse(
+            content=f'<div class="success">Item removed. {session.line_item_count} items remaining.</div>'
+        )
+
+    except Exception as e:
+        logger.error(f"Error clearing line item: {str(e)}")
+        if is_mobile:
+            return JSONResponse(
+                content=json_error("CLEAR_ITEM_ERROR", str(e)),
+                status_code=500,
+            )
+        return HTMLResponse(
+            content=f'<div class="error">Error: {str(e)}</div>',
+            status_code=500,
+        )
+
+
+@router.post("/clear-all-line-items", response_model=None)
+async def clear_all_line_items(
+    request: Request,
+    session_id: str = Form(...),
+):
+    """Remove all line items."""
+    is_mobile = wants_json(request)
+
+    try:
+        # Validate session
+        validation_result = validate_session_id(session_id)
+        if not validation_result["is_valid"]:
+            if is_mobile:
+                return JSONResponse(
+                    content=json_error("SESSION_EXPIRED", "Session expired"),
+                    status_code=400,
+                )
+            return HTMLResponse(
+                content='<div class="error">Session expired</div>',
+                status_code=400,
+            )
+
+        session = get_invoice_session(session_id)
+
+        # Clear all line items
+        session.invoice_data["line_items"] = []
+        session.line_item_count = 0
+        session.invoice_data["current_line_item"] = None
+        session.has_pending_item = False
+        logger.info(f"Cleared all line items for session {session_id}")
+
+        if is_mobile:
+            return JSONResponse(
+                content=json_success({
+                    "success": True,
+                    "item_count": 0,
+                    "line_items": [],
+                })
+            )
+
+        return HTMLResponse(
+            content='<div class="success">All items cleared.</div>'
+        )
+
+    except Exception as e:
+        logger.error(f"Error clearing all line items: {str(e)}")
+        if is_mobile:
+            return JSONResponse(
+                content=json_error("CLEAR_ALL_ERROR", str(e)),
+                status_code=500,
+            )
+        return HTMLResponse(
+            content=f'<div class="error">Error: {str(e)}</div>',
+            status_code=500,
+        )
